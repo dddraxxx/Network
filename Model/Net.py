@@ -4,6 +4,88 @@ from torch import nn
 
 from backbone.resnet import resnet50
 
+class RAttention(nn.Module):
+    '''This part of code is refactored based on https://github.com/Serge-weihao/CCNet-Pure-Pytorch. 
+       We would like to thank Serge-weihao and the authors of CCNet for their clear implementation.'''
+    def __init__(self,in_dim):
+        super(RAttention, self).__init__()
+        self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim//8, kernel_size=1)
+        self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim//8, kernel_size=1)
+        self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
+        self.softmax = nn.Softmax(dim=3)
+        self.INF = INF
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        m_batchsize, _, height, width = x.size()
+        proj_query = self.query_conv(x)
+        proj_query_H = proj_query.permute(0,3,1,2).contiguous().view(m_batchsize*width,-1,height).permute(0, 2, 1)
+        proj_query_W = proj_query.permute(0,2,1,3).contiguous().view(m_batchsize*height,-1,width).permute(0, 2, 1)
+
+        proj_query_LR = torch.diagonal(proj_query, 0, 2, 3)
+        proj_query_RL = torch.diagonal(torch.transpose(proj_query, 2, 3), 0, 2, 3)
+        # .contiguous().view(m_batchsize*height,-1,width).permute(0, 2, 1)
+
+        proj_key = self.key_conv(x)
+        proj_key_H = proj_key.permute(0,3,1,2).contiguous().view(m_batchsize*width,-1,height)
+        proj_key_W = proj_key.permute(0,2,1,3).contiguous().view(m_batchsize*height,-1,width)
+
+        proj_key_LR = torch.diagonal(proj_key, 0, 2, 3).permute(0,2,1).contiguous()
+        proj_key_RL = torch.diagonal(torch.transpose(proj_key, 2, 3), 0, 2, 3).permute(0,2,1).contiguous()
+
+        proj_value = self.value_conv(x)
+        proj_value_H = proj_value.permute(0,3,1,2).contiguous().view(m_batchsize*width,-1,height)
+        proj_value_W = proj_value.permute(0,2,1,3).contiguous().view(m_batchsize*height,-1,width)
+
+        proj_value_LR = torch.diagonal(proj_value, 0, 2, 3)
+        proj_value_RL = torch.diagonal(torch.transpose(proj_value, 2, 3), 0, 2, 3)
+
+        energy_H = (torch.bmm(proj_query_H, proj_key_H)+self.INF(m_batchsize, height, width)).view(m_batchsize,width,height,height).permute(0,2,1,3)
+        energy_W = torch.bmm(proj_query_W, proj_key_W).view(m_batchsize,height,width,width)
+
+        # energy_LR = torch.bmm(proj_query_LR, proj_key_LR)
+        # energy_RL = torch.bmm(proj_query_RL, proj_key_RL)
+        energy_LR = torch.bmm(proj_key_LR, proj_query_LR)
+        energy_RL = torch.bmm(proj_key_RL, proj_query_RL)
+
+
+        concate = self.softmax(torch.cat([energy_H, energy_W], 3))
+
+        att_H = concate[:,:,:,0:height].permute(0,2,1,3).contiguous().view(m_batchsize*width,height,height)
+        att_W = concate[:,:,:,height:height+width].contiguous().view(m_batchsize*height,width,width)
+        
+        out_H = torch.bmm(proj_value_H, att_H.permute(0, 2, 1)).view(m_batchsize,width,-1,height).permute(0,2,3,1)
+        out_W = torch.bmm(proj_value_W, att_W.permute(0, 2, 1)).view(m_batchsize,height,-1,width).permute(0,2,1,3)
+
+        out_LR = self.softmax(torch.bmm(proj_value_LR, energy_LR).unsqueeze(-1))
+        out_RL = self.softmax(torch.bmm(proj_value_RL, energy_RL).unsqueeze(-1))
+
+        # print(out_H.size())
+        # print(out_LR.size())
+        # print(out_RL.size())
+
+
+        return self.gamma*(out_H + out_W + out_LR + out_RL) + x
+
+class Relation_Attention(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(Relation_Attention, self).__init__()
+        inter_channels = in_channels // 4
+        self.conva = nn.Sequential(nn.Conv2d(in_channels, inter_channels, 3, padding=1, bias=False),
+                                   nn.BatchNorm2d(inter_channels),nn.ReLU(inplace=False))
+        self.ra = RAttention(inter_channels)
+        self.convb = nn.Sequential(nn.Conv2d(inter_channels, out_channels, 3, padding=1, bias=False),
+                                   nn.BatchNorm2d(out_channels), nn.ReLU(inplace=False))
+
+            
+    def forward(self, x, recurrence=2):
+        output = self.conva(x)
+        for i in range(recurrence):
+            output = self.ra(output)
+        output = self.convb(output)
+        
+        return output
+
 ############################ NETWORK ##############################
 class NET(nn.Module):
     def __init__(self, backbone_path=None):
