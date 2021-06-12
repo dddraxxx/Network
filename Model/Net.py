@@ -2,13 +2,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from backbone.resnet import resnet
+from backbone.resnet import resnet50
 
 ############################ NETWORK ##############################
 class NET(nn.Module):
     def __init__(self, backbone_path=None):
         super(NET, self).__init__()
-        resnet = ResNeXt101(backbone_path)
+        resnet = resnet50(backbone_path)
         self.layer0 = resnet.layer0
         self.layer1 = resnet.layer1
         self.layer2 = resnet.layer2
