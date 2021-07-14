@@ -103,13 +103,14 @@ class SAM(nn.Module):
         self.ram    = RAM(in_channel_up)
 
     def forward(self, left, up):
+        '''left: previous predicted map'''
         left= F.relu(self.bn0(self.conv0(left)), inplace=True)
-        up  = F.relu(self.bn1(self.conv1(up)), inplace=True)
-        prod= up * left
+        up1  = F.relu(self.bn1(self.conv1(up)), inplace=True)
+        prod= up1 * left
         prod1= F.relu(self.bn2(self.conv2(prod)), inplace=True)
         up  = up - prod1
         prod2= F.relu(self.bn3(self.conv3(prod)), inplace=True)
-        out  = self.ram(prod2, up)
+        out  = self.ram(up, prod2)
 
         return out
 

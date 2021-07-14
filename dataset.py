@@ -16,6 +16,8 @@
 # b=a.copy()
 # c=np.stack([a,b],axis=2)
 # c
+from matplotlib.pyplot import axis
+from F3Net.src.apex.apex.contrib.multihead_attn.mask_softmax_dropout_func import MaskSoftmaxDropout
 from pathlib import Path
 import torch
 import cv2
@@ -89,6 +91,7 @@ class Data(Dataset):
     def __init__(self, cfg) -> None:
         super().__init__()
         self.cfg    = cfg
+        self.rank_num   = cfg.rank if cfg.rank else 6
         self.normalize  = Normalize(mean=cfg.mean, std=cfg.std)
         self.randomcrop = RandomCrop()
         self.randomflip = RandomFlip()
@@ -125,11 +128,26 @@ class Data(Dataset):
         size = [224, 256, 288, 320, 352][np.random.randint(0, 5)]
         image, mask = [list(item) for item in zip(*batch)]
         for i in range(len(batch)):
-            image[i] = cv2.resize(image[i], dsize=(size, size), interpolation=cv2.INTER_LINEAR)
-            mask[i]  = cv2.resize(mask[i],  dsize=(size, size), interpolation=cv2.INTER_LINEAR)
+            image[i]= cv2.resize(image[i], dsize=(size, size), interpolation=cv2.INTER_LINEAR)
+            mask[i] = cv2.resize(mask[i],  dsize=(size, size), interpolation=cv2.INTER_LINEAR)
+            mask[i] = get_instance_masks_by_ranks(mask[i])
+            mask[i] = trim(mask[i], self.rank_num + 1) 
         image = torch.from_numpy(np.stack(image, axis=0)).permute(0,3,1,2)
         mask  = torch.from_numpy(np.stack(mask, axis=0)).unsqueeze(1)
         return image, mask
+
+def trim(maps, length):
+    valid_len   = min(length-1, len(maps))
+    mask_len    = length - valid_len
+    mask        = np.tile(np.zeros(maps[0].shape),(mask_len, 1, 1))
+    return np.concatenate([maps[:valid_len], mask]
+    , axis=0)
+
+def get_instance_masks_by_ranks(map):
+    rank_vals = np.sort(np.unique(map))[1:][::-1]
+    masks=np.array([(map == val).astype(np.float32)
+     for val in rank_vals])
+    return masks
 
 if __name__=='__main__':
     import matplotlib.pyplot as plt

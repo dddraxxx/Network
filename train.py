@@ -12,33 +12,13 @@ import torch
 import dataset
 from tensorboardX import SummaryWriter
 
-def get_instance_masks_by_ranks(map):
-    rank_vals = (torch.sort(torch.unique(map), descending=True)[:-1])[0]
-    masks=torch.stack([torch.where(map==val, torch.tensor(1.), torch.tensor(0.)
-        ) for val in rank_vals], dim=0)
-    return masks
-
-
-path='/home/qihuadong2/saliency_rank/Attention_Shift_Ranks/'\
-    + 'data/ASSR/gt/test/COCO_val2014_000000000192.png'
-map=cv2.imread(path,0)
-img=get_instance_masks_by_ranks(torch.tensor(map))
-print(img.shape, img.dtype)
-
-# for i in img:
-#     print(np.unique(i))
-#     fig, ax = plt.subplots()
-#     ax.imshow(i,cmap='gray')
-# plt.show()
 SAVE_PATH = ""
-
-
 
 def train(Dataset, Network):
     ## dataset
     cfg    = Dataset.Config(datapath='./data/MSRA-B', savepath=SAVE_PATH, mode='train', batch=32, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
     data   = Dataset.Data(cfg)
-    loader = DataLoader(data, batch_size=cfg.batch, shuffle=True, num_workers=8)
+    loader = DataLoader(data, collate_fn=data.collate, batch_size=cfg.batch, shuffle=True, num_workers=8)
     ## network
     net    = Network(cfg)
     net.train(True)
