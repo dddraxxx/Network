@@ -1,21 +1,3 @@
-# #%%
-# import pickle
-
-# f='/home/qihuadong2/saliency_rank/Attention_Shift_Ranks/data/pre_process_feat/val/'+\
-#     'COCO_val2014_000000000711'
-# with open(f,'rb') as fin:
-#     obj_data=pickle.load(fin)
-
-# print(obj_data)
-# #%%
-# obj_data['obj_masks'].shape
-
-# #%%
-# import numpy as np
-# a=np.array([[1,2],[3,4]])
-# b=a.copy()
-# c=np.stack([a,b],axis=2)
-# c
 from matplotlib.pyplot import axis
 from F3Net.src.apex.apex.contrib.multihead_attn.mask_softmax_dropout_func import MaskSoftmaxDropout
 from pathlib import Path
@@ -127,27 +109,33 @@ class Data(Dataset):
     def collate(self, batch):
         size = [224, 256, 288, 320, 352][np.random.randint(0, 5)]
         image, mask = [list(item) for item in zip(*batch)]
+        valid_len   = []
         for i in range(len(batch)):
             image[i]= cv2.resize(image[i], dsize=(size, size), interpolation=cv2.INTER_LINEAR)
             mask[i] = cv2.resize(mask[i],  dsize=(size, size), interpolation=cv2.INTER_LINEAR)
             mask[i] = get_instance_masks_by_ranks(mask[i])
+
+            valid_len.append(len(mask[i]))
             mask[i] = trim(mask[i], self.rank_num + 1) 
         image = torch.from_numpy(np.stack(image, axis=0)).permute(0,3,1,2)
         mask  = torch.from_numpy(np.stack(mask, axis=0)).unsqueeze(1)
-        return image, mask
+        valid_len   = torch.tensor(valid_len)
+        return image, mask, valid_len 
 
 def trim(maps, length):
-    valid_len   = min(length-1, len(maps))
+    valid_len   = min(length, len(maps))
     mask_len    = length - valid_len
     mask        = np.tile(np.zeros(maps[0].shape),(mask_len, 1, 1))
     return np.concatenate([maps[:valid_len], mask]
     , axis=0)
 
 def get_instance_masks_by_ranks(map):
-    rank_vals = np.sort(np.unique(map))[1:][::-1]
+    rank_vals = np.sort(np.unique(map))[::-1]
     masks=np.array([(map == val).astype(np.float32)
      for val in rank_vals])
     return masks
+
+
 
 if __name__=='__main__':
     import matplotlib.pyplot as plt

@@ -37,25 +37,22 @@ def train(Dataset, Network):
     db_size = len(loader)
     for epoch in range(cfg.epoch):
         prefetcher  = DataPrefetcher(loader)
+        image, masks, valid_len = prefetcher.next()
         batch_idx   = -1
 
         while image is not None:
-            image, mask = prefetcher.next()
-
             niter   = epoch * db_size + batch_idx
             lr, momentum    = []
             # optimizer. = 
             batch_idx   += 1
             global_step += 1
 
-            masks   = get_instance_masks_by_ranks(mask)
-            outs    = net(image, masks)
-            loss    = 0
-            for i, out in enumerate(outs):
-                loss    += F.binary_cross_entropy_with_logits(out, masks[i])
+            outs    = net(image, masks, valid_len)
+            loss    = F.binary_cross_entropy_with_logits(outs, masks[i])
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            image, masks, valid_len = prefetcher.next()
 
         if (epoch+1)%10 == 0 or (epoch+1)==cfg.epoch:
             torch.save(net.state_dict(), cfg.savepath + 'model-%s'%(str(epoch+1)))

@@ -154,7 +154,7 @@ class Decoder(nn.Module):
     def init_state(state):
         return state
 
-    def forward(self, state, X, valid_len):
+    def forward(self, state, X):
         '''
         state: {batch_size, channel, h, w}
         X: {batch_size, num_step, h, w}
@@ -171,8 +171,19 @@ class Decoder(nn.Module):
             
             '''change state'''
             dec_state   = self.sam(feat, dec_state)
-            # dec_states.append(dec_state)       
-        return outs, dec_state
+            # dec_states.append(dec_state)
+        '''outs: len: num_step, (batch, 1, H, W)'''       
+        return torch.cat(outs, dim=1), dec_state
+
+def sequence_mask(X, valid_len, value=0):
+    """Mask irrelevant entries in sequences.
+        X: {batch_size, num_step, H, W} 
+        valid_len: {batch_size}"""
+    maxlen = X.size(1)
+    mask = torch.arange((maxlen), dtype=torch.float32,
+                        device=X.device)[None, :] < valid_len[:, None]
+    X[~mask] = value
+    return X
 
 class net(nn.Module):
     def __init__(self, enc, dec) -> None:
@@ -183,8 +194,8 @@ class net(nn.Module):
     def forward(self, enc_X, dec_X, valid_len):
         state = self.encoder(enc_X)
         state = self.decoder.init_state(state)
-        dec_out, state  = self.decoder(state, dec_X, valid_len)
-        return dec_out
+        dec_out, state  = self.decoder(state, dec_X)
+        return sequence_mask(dec_out, valid_len)
 
 
 
