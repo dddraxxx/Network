@@ -1,7 +1,8 @@
+from pickle import decode_long
 import sys
 import datetime
 
-import proto.net as net
+import proto.net as network
 from lib.data_prefetcher import DataPrefetcher
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
@@ -16,7 +17,8 @@ SAVE_PATH = ""
 
 def train(Dataset, Network):
     ## dataset
-    cfg    = Dataset.Config(datapath='./data/MSRA-B', savepath=SAVE_PATH, mode='train', batch=32, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
+    cfg    = Dataset.Config(datapath='./data/ASSR', savepath=SAVE_PATH, mode='train', 
+        batch=32, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
     data   = Dataset.Data(cfg)
     loader = DataLoader(data, collate_fn=data.collate, batch_size=cfg.batch, shuffle=True, num_workers=8)
     ## network
@@ -30,7 +32,9 @@ def train(Dataset, Network):
             base.append(param)
         else:
             head.append(param)
-    optimizer   = torch.optim.SGD([{'params':base}, {'params':head}], lr=cfg.lr, momentum=cfg.momen, weight_decay=cfg.decay, nesterov=True)
+    optimizer   = torch.optim.SGD([{'params':base}, {'params':head}], 
+        lr=0, momentum=0, 
+        weight_decay=cfg.decay, nesterov=True)
     sw          = SummaryWriter(cfg.savepath)
     global_step = 0
 
@@ -58,7 +62,12 @@ def train(Dataset, Network):
             torch.save(net.state_dict(), cfg.savepath + 'model-%s'%(str(epoch+1)))
 
 if __name__=='__main__':
-    train(dataset, net)
+    enc = network.Encoder()
+    dec = network.Decoder()
+    net = network.net(1, enc, dec)
+    for name,_ in net.named_parameters():
+        print(name)
+
             
 
 

@@ -79,7 +79,7 @@ class ResNet(nn.Module):
         return out2, out3, out4, out5
 
     def initialize(self):
-        self.load_state_dict(torch.load('../res/resnet50-19c8e357.pth'), strict=False)
+        self.load_state_dict(torch.load('resnet50-19c8e357.pth'), strict=False)
 
 
 class CFM(nn.Module):
@@ -160,13 +160,13 @@ class F3Net(nn.Module):
 
         self.decoder1 = Decoder()
         self.decoder2 = Decoder()
-        self.linearp1 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
-        self.linearp2 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
+        # self.linearp1 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
+        # self.linearp2 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
 
-        self.linearr2 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
-        self.linearr3 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
-        self.linearr4 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
-        self.linearr5 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
+        # self.linearr2 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
+        # self.linearr3 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
+        # self.linearr4 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
+        # self.linearr5 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
         self.initialize()
 
     def forward(self, x, shape=None):
@@ -183,11 +183,11 @@ class F3Net(nn.Module):
         # out3h = F.interpolate(self.linearr3(out3h), size=shape, mode='bilinear')
         # out4h = F.interpolate(self.linearr4(out4h), size=shape, mode='bilinear')
         # out5h = F.interpolate(self.linearr5(out5v), size=shape, mode='bilinear')
-        return pred1, pred2, out2h, out3h, out4h, out5v
+        return pred2, out2h, out3h, out4h, out5v
 
 
     def initialize(self):
-        if self.cfg.snapshot:
+        if self.cfg and self.cfg.snapshot:
             self.load_state_dict(torch.load(self.cfg.snapshot))
         else:
             weight_init(self)

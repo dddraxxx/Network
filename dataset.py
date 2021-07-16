@@ -1,5 +1,4 @@
 from matplotlib.pyplot import axis
-from F3Net.src.apex.apex.contrib.multihead_attn.mask_softmax_dropout_func import MaskSoftmaxDropout
 from pathlib import Path
 import torch
 import cv2

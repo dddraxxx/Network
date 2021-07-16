@@ -6,7 +6,29 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules import module
 
-import f3net as f3
+import proto.f3net as f3
+
+def weight_init(module):
+    for n, m in module.named_children():
+        print('initialize: '+n)
+        if isinstance(m, nn.Conv2d):
+            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+        elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d)):
+            nn.init.ones_(m.weight)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+        elif isinstance(m, nn.Linear):
+            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+        elif isinstance(m, nn.Sequential):
+            weight_init(m)
+        elif isinstance(m, (nn.Softmax, nn.ReLU)):
+            pass
+        else:
+            m.initialize()
 
 ''' Contrast feature map '''
 class CFM(nn.Module):
@@ -21,6 +43,7 @@ class CA(nn.Module):
         self.bn0    = nn.BatchNorm2d(256)
         self.conv1  = nn.Conv2d(in_channel_up, 256, 1, 1, 1)
         self.conv2  = nn.Conv2d(256, 256, 1, 1, 1)
+        self.initialize()
 
     def forward(self, left, up):
         left= F.relu(self.bn0(self.conv0(left)), inplace=True)  
@@ -28,6 +51,9 @@ class CA(nn.Module):
         up  = F.relu(self.conv1(up), inplace=True)
         up  = torch.sigmoid(self.conv2(up))
         return left * up
+
+    def initialize(self):
+        weight_init(self)
 
 """ Relational Attention Module """
 class RAM(nn.Module):
@@ -39,6 +65,7 @@ class RAM(nn.Module):
         self.conv2  = nn.Conv2d(in_channels, in_channels, 1)
         self.softmax= nn.Softmax(dim=-1)
         self.scale  = hidden_dim ** -0.5
+        self.initialize()
     
     def forward(self, left, up):
         assert left.size() == up.size()
@@ -50,11 +77,16 @@ class RAM(nn.Module):
         out = torch.bmm(feat_val, attention).view(batch_size, -1, height, width)
 
         return out
+    
+    def initialize(self):
+        weight_init(self)
 
 """ Attention Map Decoder """
 class ChannelPool(nn.Module):
     def forward(self, x):
         return x.mean(dim=1).unsqueeze(1)
+    def initialize(self):
+        return
 
 class AMD(nn.Module):
     def __init__(self, in_channel) -> None:
@@ -62,11 +94,15 @@ class AMD(nn.Module):
         self.conv0  = nn.Conv2d(in_channel, in_channel, 1, 1, 0)
         self.bn0    = nn.BatchNorm2d(in_channel)
         self.pool   = ChannelPool()
+        self.initialize()
 
     def forward(self, x):
         x   = F.relu(self.bn0(self.conv0(x)), inplace=True)
         x   = self.pool(x)
         return x
+
+    def initialize(self):
+        weight_init(self)
 
 
 """ Refine attention map """
@@ -79,6 +115,7 @@ class RFM(nn.Module):
         self.bn1    = nn.BatchNorm2d(repr_dim)
         self.conv2  = nn.Conv2d(repr_dim, repr_dim, 3, 1, 1)
         self.bn2    = nn.BatchNorm2d(repr_dim)
+        self.initialize()
     
     def forward(self, left, up):
         '''left for coarse saliency map'''
@@ -87,6 +124,9 @@ class RFM(nn.Module):
         w, b    = out1[:, :128, :, :], out1[:, 128:, :, :]
         out     = F.relu(self.bn2(self.conv2(w * out2 + b)), inplace=True)
         return out
+        
+    def initialize(self):
+        weight_init(self)
 
 ''' Supress-Augment Module '''
 class SAM(nn.Module):
@@ -101,6 +141,7 @@ class SAM(nn.Module):
         self.conv3  = nn.Conv2d(in_channel_up, in_channel_up, 3, 1, 1)
         self.bn3    = nn.BatchNorm2d(in_channel_up)
         self.ram    = RAM(in_channel_up)
+        self.initialize()
 
     def forward(self, left, up):
         '''left: previous predicted map'''
@@ -113,6 +154,9 @@ class SAM(nn.Module):
         out  = self.ram(up, prod2)
 
         return out
+
+    def initialize(self):
+        weight_init(self)
 
 
 '''Encoder-decoder arch'''
@@ -128,11 +172,12 @@ class Encoder(nn.Module):
         )
         self.ca = CA(enc_dim, enc_dim)
         self.ram= RAM(enc_dim)
+        self.initialize()
 
 
     def forward(self, X):
-        # _, pred2, out2h, out3h, out4h, out5v
-        outs    = self.f3(X)[1:]
+        # pred, out2h, out3h, out4h, out5v
+        outs    = self.f3(X)
         shape   = X.size()[2:]   
         
         for i in range(len(outs)):
@@ -142,6 +187,9 @@ class Encoder(nn.Module):
         out1 = self.ca(out, out)
         out2 = self.ram(out1, out1)
         return out + out1 + out2
+    
+    def initialize(self):
+        weight_init(self)
 
 
 class Decoder(nn.Module):
@@ -150,8 +198,13 @@ class Decoder(nn.Module):
         self.amd1   = AMD(enc_dim)
         self.rfm    = RFM(1, enc_dim, enc_dim)
         self.amd2   = AMD(enc_dim)
+        self.mode   = 'train'
+        self.initialize()
 
-    def init_state(state):
+    def mode(self, s):
+        self.mode   = s
+
+    def init_state(self, state):
         return state
 
     def forward(self, state, X):
@@ -174,6 +227,9 @@ class Decoder(nn.Module):
             # dec_states.append(dec_state)
         '''outs: len: num_step, (batch, 1, H, W)'''       
         return torch.cat(outs, dim=1), dec_state
+    
+    def initialize(self):
+        weight_init(self)
 
 def sequence_mask(X, valid_len, value=0):
     """Mask irrelevant entries in sequences.
@@ -186,16 +242,21 @@ def sequence_mask(X, valid_len, value=0):
     return X
 
 class net(nn.Module):
-    def __init__(self, enc, dec) -> None:
+    def __init__(self, cfg, enc, dec) -> None:
         super().__init__()
         self.encoder    = enc
         self.decoder    = dec 
+        self.cfg        = cfg
+        self.initialize()
     
     def forward(self, enc_X, dec_X, valid_len):
         state = self.encoder(enc_X)
         state = self.decoder.init_state(state)
         dec_out, state  = self.decoder(state, dec_X)
         return sequence_mask(dec_out, valid_len)
+    
+    def initialize(self):
+        weight_init(self)
 
 
 
