@@ -43,7 +43,6 @@ class CA(nn.Module):
         self.bn0    = nn.BatchNorm2d(256)
         self.conv1  = nn.Conv2d(in_channel_up, 256, 1, 1, 1)
         self.conv2  = nn.Conv2d(256, 256, 1, 1, 1)
-        self.initialize()
 
     def forward(self, left, up):
         left= F.relu(self.bn0(self.conv0(left)), inplace=True)  
@@ -65,7 +64,6 @@ class RAM(nn.Module):
         self.conv2  = nn.Conv2d(in_channels, in_channels, 1)
         self.softmax= nn.Softmax(dim=-1)
         self.scale  = hidden_dim ** -0.5
-        self.initialize()
     
     def forward(self, left, up):
         assert left.size() == up.size()
@@ -94,7 +92,6 @@ class AMD(nn.Module):
         self.conv0  = nn.Conv2d(in_channel, in_channel, 1, 1, 0)
         self.bn0    = nn.BatchNorm2d(in_channel)
         self.pool   = ChannelPool()
-        self.initialize()
 
     def forward(self, x):
         x   = F.relu(self.bn0(self.conv0(x)), inplace=True)
@@ -115,7 +112,6 @@ class RFM(nn.Module):
         self.bn1    = nn.BatchNorm2d(repr_dim)
         self.conv2  = nn.Conv2d(repr_dim, repr_dim, 3, 1, 1)
         self.bn2    = nn.BatchNorm2d(repr_dim)
-        self.initialize()
     
     def forward(self, left, up):
         '''left for coarse saliency map'''
@@ -141,7 +137,6 @@ class SAM(nn.Module):
         self.conv3  = nn.Conv2d(in_channel_up, in_channel_up, 3, 1, 1)
         self.bn3    = nn.BatchNorm2d(in_channel_up)
         self.ram    = RAM(in_channel_up)
-        self.initialize()
 
     def forward(self, left, up):
         '''left: previous predicted map'''
@@ -172,7 +167,6 @@ class Encoder(nn.Module):
         )
         self.ca = CA(enc_dim, enc_dim)
         self.ram= RAM(enc_dim)
-        self.initialize()
 
 
     def forward(self, X):
@@ -199,7 +193,6 @@ class Decoder(nn.Module):
         self.rfm    = RFM(1, enc_dim, enc_dim)
         self.amd2   = AMD(enc_dim)
         self.mode   = 'train'
-        self.initialize()
 
     def mode(self, s):
         self.mode   = s
@@ -242,10 +235,10 @@ def sequence_mask(X, valid_len, value=0):
     return X
 
 class net(nn.Module):
-    def __init__(self, cfg, enc, dec) -> None:
+    def __init__(self, cfg) -> None:
         super().__init__()
-        self.encoder    = enc
-        self.decoder    = dec 
+        self.encoder    = Encoder()
+        self.decoder    = Decoder()
         self.cfg        = cfg
         self.initialize()
     

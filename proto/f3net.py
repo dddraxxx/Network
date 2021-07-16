@@ -167,7 +167,7 @@ class F3Net(nn.Module):
         # self.linearr3 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
         # self.linearr4 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
         # self.linearr5 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
-        self.initialize()
+        # self.initialize()
 
     def forward(self, x, shape=None):
         out2h, out3h, out4h, out5v        = self.bkbone(x)
