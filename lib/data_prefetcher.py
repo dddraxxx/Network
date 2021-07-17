@@ -1,4 +1,10 @@
 import torch
+from torch.nn.modules import batchnorm
+
+def cycle(iterable):
+    while True:
+        for x in iterable:
+            yield x
 
 class DataPrefetcher():
     def __init__(self, loader):
@@ -11,21 +17,24 @@ class DataPrefetcher():
         self.preload()
 
     def preload(self):
+        print('loading batch')
         try:
             self.batch = next(self.loader)
         except StopIteration:
             self.batch = None
             return
         with torch.cuda.stream(self.stream):
+            batch   = []
             for k in self.batch:
-                if k != 'meta':
-                    self.batch[k] = self.batch[k].cuda(non_blocking=True)
-
+                if isinstance(k, torch.Tensor):
+                    batch.append(k.cuda(non_blocking=True))
+            self.batch  = batch
             # With Amp, it isn't necessary to manually convert data to half.
             # if args.fp16:
             #     self.next_input = self.next_input.half()
             # else:
             #     self.next_input = self.next_input.float()
+        print('loading finished')
 
     def next(self):
         torch.cuda.current_stream().wait_stream(self.stream)

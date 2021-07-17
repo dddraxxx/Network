@@ -47,6 +47,9 @@ def train(Dataset, Network):
         batch=32, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
     data   = Dataset.Data(cfg)
     loader = DataLoader(data, collate_fn=data.collate, batch_size=cfg.batch, shuffle=True, num_workers=8)
+    prefetcher  = DataPrefetcher(loader)
+    exit()
+
     ## network
     net    = Network(cfg)
     net.train(True)
@@ -67,10 +70,11 @@ def train(Dataset, Network):
     db_size = len(loader)
     for epoch in range(cfg.epoch):
         prefetcher  = DataPrefetcher(loader)
-        image, masks, valid_len = prefetcher.next()
+        batch = prefetcher.next()
         batch_idx   = -1
 
-        while image is not None:
+        while batch is not None:
+            image, masks, valid_len = batch
             niter   = epoch * db_size + batch_idx
             lr, momentum    = get_triangle_lr(BASE_LR, MAX_LR, cfg.epoch, niter)
             optimizer.param_groups[0]['lr'] = 0.1 * lr
@@ -88,7 +92,7 @@ def train(Dataset, Network):
             if batch_idx % 10 == 0:
                 msg = '%s | step:%d/%d/%d | lr=%.6f | loss=%.6f'%(datetime.datetime.now(),  global_step, epoch+1, cfg.epoch, optimizer.param_groups[0]['lr'], loss.item())
                 print(msg)
-            image, masks, valid_len = prefetcher.next()
+            batch = prefetcher.next()
 
         if (epoch+1)%10 == 0 or (epoch+1)==cfg.epoch:
             torch.save(net.state_dict(), cfg.savepath + '/model-%s'%(str(epoch+1)))

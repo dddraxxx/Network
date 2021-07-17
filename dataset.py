@@ -110,15 +110,20 @@ class Data(Dataset):
         image, mask = [list(item) for item in zip(*batch)]
         valid_len   = []
         for i in range(len(batch)):
-            image[i]= cv2.resize(image[i], dsize=(size, size), interpolation=cv2.INTER_LINEAR)
-            mask[i] = cv2.resize(mask[i],  dsize=(size, size), interpolation=cv2.INTER_LINEAR)
+            print('Calc 1 img-msk pair')
             mask[i] = get_instance_masks_by_ranks(mask[i])
-
             valid_len.append(len(mask[i]))
-            mask[i] = trim(mask[i], self.rank_num + 1) 
-        image = torch.from_numpy(np.stack(image, axis=0)).permute(0,3,1,2)
-        mask  = torch.from_numpy(np.stack(mask, axis=0)).unsqueeze(1)
-        valid_len   = torch.tensor(valid_len)
+            image[i]= cv2.resize(image[i], dsize=(size, size), interpolation=cv2.INTER_LINEAR)
+            mask[i] = [cv2.resize(m,  dsize=(size, size), interpolation=cv2.INTER_LINEAR)
+                for m in mask[i]]
+
+            mask[i] = trim(mask[i], self.rank_num + 1)
+
+        image = torch.from_numpy(np.stack(image, axis=0)).permute(0,3,1,2).float()
+        mask  = torch.from_numpy(np.stack(mask, axis=0)).float()
+        valid_len   = torch.tensor(valid_len).int()
+        print(image.size(), mask.size(), valid_len.size())
+
         return image, mask, valid_len 
 
 def trim(maps, length):
@@ -130,7 +135,7 @@ def trim(maps, length):
 
 def get_instance_masks_by_ranks(map):
     rank_vals = np.sort(np.unique(map))[::-1]
-    masks=np.array([(map == val).astype(np.float32)
+    masks= np.array([(map == val).astype(np.float32)
      for val in rank_vals])
     return masks
 
