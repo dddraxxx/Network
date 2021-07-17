@@ -110,7 +110,7 @@ class Data(Dataset):
         image, mask = [list(item) for item in zip(*batch)]
         valid_len   = []
         for i in range(len(batch)):
-            print('Calc 1 img-msk pair')
+            # print('Calc 1 img-msk pair')
             mask[i] = get_instance_masks_by_ranks(mask[i])
             valid_len.append(len(mask[i]))
             image[i]= cv2.resize(image[i], dsize=(size, size), interpolation=cv2.INTER_LINEAR)

@@ -171,7 +171,7 @@ class Encoder(nn.Module):
 
     def forward(self, X):
         # pred, out2h, out3h, out4h, out5v
-        outs    = self.f3(X)
+        outs    = list(self.f3(X))
         shape   = X.size()[2:]   
         
         for i in range(len(outs)):

@@ -17,7 +17,7 @@ class DataPrefetcher():
         self.preload()
 
     def preload(self):
-        print('loading batch')
+        # print('loading batch')
         try:
             self.batch = next(self.loader)
         except StopIteration:
@@ -34,7 +34,7 @@ class DataPrefetcher():
             #     self.next_input = self.next_input.half()
             # else:
             #     self.next_input = self.next_input.float()
-        print('loading finished')
+        # print('loading finished')
 
     def next(self):
         torch.cuda.current_stream().wait_stream(self.stream)

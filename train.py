@@ -43,12 +43,11 @@ MAX_LR  = 1e-1
 
 def train(Dataset, Network):
     ## dataset
-    cfg    = Dataset.Config(datapath='/home/qihuadong2/saliency_rank/GCPANet/data/ASSR', savepath=SAVE_PATH, mode='train', 
+    cfg    = Dataset.Config(datapath='./data/ASSR', savepath=SAVE_PATH, mode='train', 
         batch=32, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
     data   = Dataset.Data(cfg)
     loader = DataLoader(data, collate_fn=data.collate, batch_size=cfg.batch, shuffle=True, num_workers=8)
     prefetcher  = DataPrefetcher(loader)
-    exit()
 
     ## network
     net    = Network(cfg)
