@@ -44,10 +44,9 @@ MAX_LR  = 1e-1
 def train(Dataset, Network):
     ## dataset
     cfg    = Dataset.Config(datapath='./data/ASSR', savepath=SAVE_PATH, mode='train', 
-        batch=32, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
+        batch=8, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
     data   = Dataset.Data(cfg)
     loader = DataLoader(data, collate_fn=data.collate, batch_size=cfg.batch, shuffle=True, num_workers=8)
-    prefetcher  = DataPrefetcher(loader)
 
     ## network
     net    = Network(cfg)
@@ -73,6 +72,8 @@ def train(Dataset, Network):
         batch_idx   = -1
 
         while batch is not None:
+        # for image, masks, valid_len in loader:
+        #     image, masks, valid_len = image.cuda(), masks.cuda(), valid_len.cuda()
             image, masks, valid_len = batch
             niter   = epoch * db_size + batch_idx
             lr, momentum    = get_triangle_lr(BASE_LR, MAX_LR, cfg.epoch, niter)

@@ -122,7 +122,7 @@ class Data(Dataset):
         image = torch.from_numpy(np.stack(image, axis=0)).permute(0,3,1,2).float()
         mask  = torch.from_numpy(np.stack(mask, axis=0)).float()
         valid_len   = torch.tensor(valid_len).int()
-        print(image.size(), mask.size(), valid_len.size())
+        # print(image.size(), mask.size(), valid_len.size())
 
         return image, mask, valid_len 
 

@@ -158,8 +158,8 @@ class F3Net(nn.Module):
         self.squeeze3 = nn.Sequential(nn.Conv2d( 512, 64, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True))
         self.squeeze2 = nn.Sequential(nn.Conv2d( 256, 64, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True))
 
-        self.decoder1 = Decoder()
-        self.decoder2 = Decoder()
+        # self.decoder1 = Decoder()
+        # self.decoder2 = Decoder()
         # self.linearp1 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
         # self.linearp2 = nn.Conv2d(64, 1, kernel_size=3, stride=1, padding=1)
 
@@ -172,8 +172,8 @@ class F3Net(nn.Module):
     def forward(self, x, shape=None):
         out2h, out3h, out4h, out5v        = self.bkbone(x)
         out2h, out3h, out4h, out5v        = self.squeeze2(out2h), self.squeeze3(out3h), self.squeeze4(out4h), self.squeeze5(out5v)
-        out2h, out3h, out4h, out5v, pred1 = self.decoder1(out2h, out3h, out4h, out5v)
-        out2h, out3h, out4h, out5v, pred2 = self.decoder2(out2h, out3h, out4h, out5v, pred1)
+        # out2h, out3h, out4h, out5v, pred1 = self.decoder1(out2h, out3h, out4h, out5v)
+        # out2h, out3h, out4h, out5v, pred2 = self.decoder2(out2h, out3h, out4h, out5v, pred1)
 
         # shape = x.size()[2:] if shape is None else shape
         # pred1 = F.interpolate(self.linearp1(pred1), size=shape, mode='bilinear')
@@ -183,7 +183,7 @@ class F3Net(nn.Module):
         # out3h = F.interpolate(self.linearr3(out3h), size=shape, mode='bilinear')
         # out4h = F.interpolate(self.linearr4(out4h), size=shape, mode='bilinear')
         # out5h = F.interpolate(self.linearr5(out5v), size=shape, mode='bilinear')
-        return pred2, out2h, out3h, out4h, out5v
+        return out2h, out3h, out4h, out5v
 
 
     def initialize(self):

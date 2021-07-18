@@ -37,17 +37,18 @@ class CFM(nn.Module):
 
 ''' Channel based relation '''
 class CA(nn.Module):
-    def __init__(self, in_channel_left, in_channel_up):
+    def __init__(self, in_channel_left, in_channel_up, enc_dim=128):
         super(CA, self).__init__()
-        self.conv0  = nn.Conv2d(in_channel_left, 256, 1, 1, 0)
-        self.bn0    = nn.BatchNorm2d(256)
-        self.conv1  = nn.Conv2d(in_channel_up, 256, 1, 1, 1)
-        self.conv2  = nn.Conv2d(256, 256, 1, 1, 1)
+        self.conv0  = nn.Conv2d(in_channel_left, enc_dim, 1, 1, 0)
+        self.bn0    = nn.BatchNorm2d(enc_dim)
+        self.conv1  = nn.Conv2d(in_channel_up, enc_dim, 1, 1, 0)
+        self.bn1    = nn.BatchNorm2d(enc_dim)
+        self.conv2  = nn.Conv2d(enc_dim, enc_dim, 1, 1, 0)
 
     def forward(self, left, up):
         left= F.relu(self.bn0(self.conv0(left)), inplace=True)  
         up  = up.mean(dim=(2,3), keepdim=True)
-        up  = F.relu(self.conv1(up), inplace=True)
+        up  = F.relu(self.bn1(self.conv1(up)), inplace=True)
         up  = torch.sigmoid(self.conv2(up))
         return left * up
 
@@ -143,12 +144,12 @@ class SAM(nn.Module):
         left= F.relu(self.bn0(self.conv0(left)), inplace=True)
         up1  = F.relu(self.bn1(self.conv1(up)), inplace=True)
         prod= up1 * left
-        prod1= F.relu(self.bn2(self.conv2(prod)), inplace=True)
-        up  = up - prod1
-        prod2= F.relu(self.bn3(self.conv3(prod)), inplace=True)
-        out  = self.ram(up, prod2)
+        # prod1= F.relu(self.bn2(self.conv2(prod)), inplace=True)
+        # up  = up - prod1
+        # prod2= F.relu(self.bn3(self.conv3(prod)), inplace=True)
+        # out  = self.ram(up, prod2)
 
-        return out
+        return prod #out
 
     def initialize(self):
         weight_init(self)
@@ -161,12 +162,12 @@ class Encoder(nn.Module):
         self.cfg= cfg
         self.f3 = f3.F3Net(cfg)
         self.linear = nn.Sequential(
-            nn.Conv2d(64*5, enc_dim, kernel_size=1, stride=1, padding=0),
+            nn.Conv2d(64*4, enc_dim, kernel_size=1, stride=1, padding=0),
             nn.BatchNorm2d(enc_dim),
             nn.ReLU(inplace=True),
         )
         self.ca = CA(enc_dim, enc_dim)
-        self.ram= RAM(enc_dim)
+        # self.ram= RAM(enc_dim)
 
 
     def forward(self, X):
@@ -179,8 +180,8 @@ class Encoder(nn.Module):
         out = torch.cat(outs, dim=1)
         out = self.linear(out)
         out1 = self.ca(out, out)
-        out2 = self.ram(out1, out1)
-        return out + out1 + out2
+        # out2 = self.ram(out1, out1)
+        return out + out1 #+ out2
     
     def initialize(self):
         weight_init(self)
@@ -192,7 +193,7 @@ class Decoder(nn.Module):
         self.amd1   = AMD(enc_dim)
         self.rfm    = RFM(1, enc_dim, enc_dim)
         self.amd2   = AMD(enc_dim)
-        self.mode   = 'train'
+        self.sam    = SAM(1, enc_dim)
 
     def mode(self, s):
         self.mode   = s
@@ -205,6 +206,7 @@ class Decoder(nn.Module):
         state: {batch_size, channel, h, w}
         X: {batch_size, num_step, h, w}
         to {num_step, batch_size, h, w}'''
+        print('dec begin')
         X   = X.permute(1,0,2,3)
         dec_state   = state
         outs, dec_states = [], []
