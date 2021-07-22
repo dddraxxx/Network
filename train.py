@@ -44,7 +44,7 @@ MAX_LR  = 1e-1
 def train(Dataset, Network):
     ## dataset
     cfg    = Dataset.Config(datapath='./data/ASSR', savepath=SAVE_PATH, mode='train', 
-        batch=8, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
+        batch=32, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
     data   = Dataset.Data(cfg)
     loader = DataLoader(data, collate_fn=data.collate, batch_size=cfg.batch, shuffle=True, num_workers=8)
 
@@ -76,7 +76,7 @@ def train(Dataset, Network):
         #     image, masks, valid_len = image.cuda(), masks.cuda(), valid_len.cuda()
             image, masks, valid_len = batch
             niter   = epoch * db_size + batch_idx
-            lr, momentum    = get_triangle_lr(BASE_LR, MAX_LR, cfg.epoch, niter)
+            lr, momentum    = get_triangle_lr(BASE_LR, MAX_LR, cfg.epoch*db_size, niter)
             optimizer.param_groups[0]['lr'] = 0.1 * lr
             optimizer.param_groups[1]['lr'] = lr
             optimizer.momentum  = momentum
@@ -97,8 +97,29 @@ def train(Dataset, Network):
         if (epoch+1)%10 == 0 or (epoch+1)==cfg.epoch:
             torch.save(net.state_dict(), cfg.savepath + '/model-%s'%(str(epoch+1)))
 
+from prettytable import PrettyTable
+
+def count_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad: continue
+        param = parameter.numel()
+        table.add_row([name, param])
+        total_params+=param
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    return total_params
+    
 if __name__=='__main__':
     train(dataset, network.net)
+    # count_parameters(network.net(0))
+#%%
+import torch
+import torch.nn.functional as F
+a = -torch.ones((1,2,3))
+F.relu(a, inplace=True),a
+
     
     
 

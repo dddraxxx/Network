@@ -107,6 +107,7 @@ class Data(Dataset):
 
     def collate(self, batch):
         size = [224, 256, 288, 320, 352][np.random.randint(0, 5)]
+        size = 64
         image, mask = [list(item) for item in zip(*batch)]
         valid_len   = []
         for i in range(len(batch)):

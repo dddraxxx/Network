@@ -173,7 +173,7 @@ class Encoder(nn.Module):
     def forward(self, X):
         # pred, out2h, out3h, out4h, out5v
         outs    = list(self.f3(X))
-        shape   = X.size()[2:]   
+        shape   = (64,64)#X.size()[2:]   
         
         for i in range(len(outs)):
             outs[i] = F.interpolate(outs[i], size=shape, mode='bilinear')
@@ -206,7 +206,6 @@ class Decoder(nn.Module):
         state: {batch_size, channel, h, w}
         X: {batch_size, num_step, h, w}
         to {num_step, batch_size, h, w}'''
-        print('dec begin')
         X   = X.permute(1,0,2,3)
         dec_state   = state
         outs, dec_states = [], []
