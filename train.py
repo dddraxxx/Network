@@ -2,7 +2,6 @@ from pickle import decode_long
 import sys
 import datetime
 
-import proto.net as network
 from lib.data_prefetcher import DataPrefetcher
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
@@ -11,7 +10,7 @@ import matplotlib.pyplot as plt
 import cv2
 import torch
 import dataset
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 SAVE_PATH = "./out"
 
@@ -62,7 +61,6 @@ def train(Dataset, Network):
     optimizer   = torch.optim.SGD([{'params':base}, {'params':head}], 
         lr=0.05, momentum=0.9, 
         weight_decay=cfg.decay, nesterov=True)
-    sw          = SummaryWriter(cfg.savepath)
     global_step = 0
 
     db_size = len(loader)
@@ -84,8 +82,8 @@ def train(Dataset, Network):
             batch_idx   += 1
             global_step += 1
 
-            outs    = net(image, masks, valid_len)
-            loss    = F.binary_cross_entropy_with_logits(outs, masks)
+            outs    = net(image)
+            loss    = F.binary_cross_entropy_with_logits(outs, masks[0])
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -110,15 +108,11 @@ def count_parameters(model):
     print(table)
     print(f"Total Trainable Params: {total_params}")
     return total_params
-    
+
+import GeNet.Net as network
 if __name__=='__main__':
-    train(dataset, network.net)
+    train(dataset, network.GeNet)
     # count_parameters(network.net(0))
-#%%
-import torch
-import torch.nn.functional as F
-a = -torch.ones((1,2,3))
-F.relu(a, inplace=True),a
 
     
     

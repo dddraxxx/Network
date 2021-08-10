@@ -1,12 +1,4 @@
-from posix import waitid_result
-from numpy.core.numeric import outer
-from numpy.lib.twodim_base import _histogram2d_dispatcher
-from torch.utils.hooks import warn_if_has_hooks
-from GCPANet.lib.dataset import W
-from os import SCHED_OTHER
-from numpy.lib.histograms import _histogram_dispatcher
 import torch
-from torch._C import ScriptModuleSerializer
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules import module
@@ -86,19 +78,6 @@ class ResNet(nn.Module):
     def initialize(self):
         self.load_state_dict(torch.load('resnet50-19c8e357.pth'), strict=False)
 
-class attention(nn.Module):
-    def __init__(self, num_head, in_planes, attn_dim):
-        super().__init__()
-        self.scale  = attn_dim ** -0.5
-        self.num_head= num_head
-        self.q    = nn.Conv2d(in_planes, attn_dim * 3, 1, 1, 0)
-        self.k      = nn.Conv2d(in_planes, )
-        self.v      = nn.Conv2d()
-        self.linear = nn.Linear(attn_dim, attn_dim)
-    
-    def forward(self, q, k, v):
-        B, C, H, W = q.shape
-
 
 class ATM(nn.Module):
     def __init__(self, num_head, in_planes, num_dim):
@@ -116,39 +95,75 @@ class ATM(nn.Module):
         B, _, H, W  = query.size()
         qu  = self.q(query).reshape(B, self.num_head, self.head_dim, H*W).permute(0, 1, 3, 2)
         ke  = self.k(key).reshape(B, self.num_head, self.head_dim, H*W)
-        score   = (qu@ke).sum(dim=-1).reshape(B, self.num_head, H, W)
-        score   = F.sigmoid(self.bn(score))
+        score   = (qu@ke).sum(dim=-1).reshape(B, self.num_head, H, W).permute(0, 2, 3, 1)
+        score   = F.relu(self.bn(score), inplace=True)
         score   = self.v(score)
         return value * score
 
     def initialize(self):
-        weight_init(self)
+        weight_init(self) 
 
-        
+
 class HAM(nn.Module):
-    def __init__(self, head_num, h_planes, l_planes):
+    def __init__(self, num_dim, h_planes, l_planes, num_cardi=4):
         super().__init__()
+        self.conv0  = nn.Conv2d(h_planes, num_dim, 3, 1, 1)
+        self.conv2  = nn.Conv2d(l_planes, num_dim, 3, 1, 1)
+        self.conv1  = nn.Conv2d(num_dim, num_dim, 3, 1, 1, groups=num_cardi)
+        self.conv3  = nn.Conv2d(num_dim, num_dim, 3, 1, 1, groups=num_cardi)
+        self.conv5  = nn.Conv2d(num_dim, num_dim, 1, 1, 0)
+        self.conv4  = nn.Conv2d(num_dim, num_dim, 3, 1, 1)
+
+        self.bn0    = nn.BatchNorm2d(num_dim)
+        self.bn1    = nn.BatchNorm2d(num_dim)
+        self.bn2    = nn.BatchNorm2d(num_dim)
+        self.bn3    = nn.BatchNorm2d(num_dim)
+        self.bn4    = nn.BatchNorm2d(num_dim)
+        self.bn5    = nn.BatchNorm2d(num_dim)
     
-    def foward(self, high, low):
+    def forward(self, high, low):
         high    = F.relu(self.bn0(self.conv0(high)), inplace=True)
         low     = F.relu(self.bn2(self.conv2((low))), inplace=True)
 
-        w_h     = F.gelu(self.bn1(self.convtr0(high)))  
-        w_l     = F.gelu(self.bn3(self.conv3(low)))
+        w_h     = F.gelu(self.bn1(self.conv1(F.interpolate(high, size=low.size()[2:],
+            mode='bilinear'))))
+        w_l     = F.relu(self.bn3(self.conv3(low)), inplace=True)
         out     = F.relu(self.bn5(self.conv5(w_h*w_l)), inplace=True)
 
         return F.relu(self.bn4(self.conv4(out + low)), inplace=True)
     
     def initialize(self):
         weight_init(self)
+    
 
 class GeNet(nn.Module):
-    def __init__(self, cfg, img_size, rank_num):
+    def __init__(self, cfg, img_size=None, rank_num=None):
         super().__init__()
         self.cfg    = cfg
         self.bkbone = ResNet()
         
-        self.pos_emb= nn.Parameter(torch.zeros((2, img_size, img_size)))
-        self.sa5    = 
+        # self.pos_emb= nn.Parameter(torch.zeros((2, img_size, img_size)))
+        self.atm1   = ATM(3, 256, 256)
+        self.atm2   = ATM(3, 256, 256)
+        self.ham1   = HAM(256, 256, 512, 4)
+        self.ham2   = HAM(256, 256, 256, 4)
+        self.conv1  = nn.Conv2d(256, 1, 3, 1, 1)
+        self.initialize()
+    
+    def forward(self, x):
+        outs = list(self.bkbone(x))
+        out2, out3, out4, out5 = outs
+        out5a = self.atm1(out5, out5)
+        out4a = self.atm2(out5a, out4)
+        out3a = self.ham1(out4a, out3)
+        out2a = self.ham2(out3a, out2)
+        out   = F.interpolate(self.conv1(out2a), size=x.shape[2:],
+            mode='bilinear')
+        return out
+    
+    def initialize(self):
+        weight_init(self)
+
+
 
 
