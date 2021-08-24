@@ -1,125 +1,83 @@
-from pickle import decode_long
-import sys
 import datetime
-
-from lib.data_prefetcher import DataPrefetcher
-from torch.utils.data import DataLoader
-import torch.nn.functional as F
-import numpy as np
-import matplotlib.pyplot as plt
-import cv2
+import os
+import sys
 import torch
+
+from torch.utils import data
+from torch.utils.data.dataloader import DataLoader
+sys.path.append('./')
+
+import GeNet.Net as Net
+import lib.train_util as t_util
 import dataset
-from torch.utils.tensorboard import SummaryWriter
+import torch.nn.functional as F
 
-SAVE_PATH = "./out"
 
-""" set lr """
-def get_triangle_lr(base_lr, max_lr, total_steps, cur, ratio=1., \
-        annealing_decay=1e-2, momentums=[0.95, 0.85]):
-    first = int(total_steps*ratio)
-    last  = total_steps - first
-    min_lr = base_lr * annealing_decay
 
-    cycle = np.floor(1 + cur/total_steps)
-    x = np.abs(cur*2.0/total_steps - 2.0*cycle + 1)
-    if cur < first:
-        lr = base_lr + (max_lr - base_lr) * np.maximum(0., 1.0 - x)
-    else:
-        lr = ((base_lr - min_lr)*cur + min_lr*first - base_lr*total_steps)/(first - total_steps)
-    if isinstance(momentums, int):
-        momentum = momentums
-    else:
-        if cur < first:
-            momentum = momentums[0] + (momentums[1] - momentums[0]) * np.maximum(0., 1.-x)
-        else:
-            momentum = momentums[0]
-
-    return lr, momentum
-
-BASE_LR = 1e-3
-MAX_LR  = 1e-1
-
-def train(Dataset, Network):
-    ## dataset
-    cfg    = Dataset.Config(datapath='./data/ASSR', savepath=SAVE_PATH, mode='train', 
-        batch=32, lr=0.05, momen=0.9, decay=5e-4, epoch=30)
-    data   = Dataset.Data(cfg)
-    loader = DataLoader(data, collate_fn=data.collate, batch_size=cfg.batch, shuffle=True, num_workers=8)
-
-    ## network
-    net    = Network(cfg)
+def train(dataset, network, datapath, savepath, **kargs):
+    cfg     = t_util.Config(datapath=datapath, savepath=savepath,
+        epoch=30, batch=16, weight_decay=5e-4, **kargs)
+    cfg.mode= 'train'
+    data    = dataset.Data(cfg)
+    loader  = DataLoader(data, cfg.batch, shuffle=True, 
+        num_workers=8, pin_memory=True)
+    path    = os.path.join(cfg.savepath, datetime.datetime.now().strftime('%d-%H'))
+    if not os.path.exists(path):
+        os.makedirs(path)
+    
+    ### Network
+    net     = network(cfg)
     net.train(True)
     net.cuda()
-    ## parameter
-    base, head = [], []
-    for name, param in net.named_parameters():
+
+    ### Optim
+    base, head  = [],[]
+    for name, module in net.named_parameters():
         if 'bkbone' in name:
-            base.append(param)
+            base.append(module)
         else:
-            head.append(param)
-    optimizer   = torch.optim.SGD([{'params':base}, {'params':head}], 
-        lr=0.05, momentum=0.9, 
-        weight_decay=cfg.decay, nesterov=True)
+            head.append(module)
+    
+    optimizer   = torch.optim.SGD([{'params': base}, {'params': head}],
+        weight_decay=cfg.weight_decay, lr=1e-3)
+    ### Training
     global_step = 0
-
-    db_size = len(loader)
+    total_step  = len(loader) * cfg.epoch
+    lr_scheduler    = t_util.LR_Scheduler([1e-3, 0.1], total_step)
+    
     for epoch in range(cfg.epoch):
-        prefetcher  = DataPrefetcher(loader)
-        batch = prefetcher.next()
-        batch_idx   = -1
+        idx   = 0
+        for img, mask, val_len in iter(loader):
+            img     = img.to('cuda:0', torch.float32, non_blocking=True)
+            mask    = mask.to('cuda:0', torch.float32, non_blocking=True)
+            out     = net(img)
+            loss    = F.binary_cross_entropy_with_logits(out, mask)
 
-        while batch is not None:
-        # for image, masks, valid_len in loader:
-        #     image, masks, valid_len = image.cuda(), masks.cuda(), valid_len.cuda()
-            image, masks, valid_len = batch
-            niter   = epoch * db_size + batch_idx
-            lr, momentum    = get_triangle_lr(BASE_LR, MAX_LR, cfg.epoch*db_size, niter)
-            optimizer.param_groups[0]['lr'] = 0.1 * lr
-            optimizer.param_groups[1]['lr'] = lr
-            optimizer.momentum  = momentum
+            idx   += 1
+            global_step     += 1
+            ### LR
+            lr, momentum    = lr_scheduler.get_lr(idx)
+            optimizer.momemtum  = momentum
+            optimizer.param_groups[0]['lr']     = 0.1*lr
 
-            batch_idx   += 1
-            global_step += 1
-
-            outs    = net(image)
-            loss    = F.binary_cross_entropy_with_logits(outs, masks[0])
-            optimizer.zero_grad()
+            optimizer.param_groups[1]['lr']     = lr
+            optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
-            if batch_idx % 10 == 0:
-                msg = '%s | step:%d/%d/%d | lr=%.6f | loss=%.6f'%(datetime.datetime.now(),  global_step, epoch+1, cfg.epoch, optimizer.param_groups[0]['lr'], loss.item())
+
+            if idx%10==0:
+                msg     = '%s | step: %d/%d, %d/%d, %d/%d | lr=%.5f | loss=%.6f' % (
+                    datetime.datetime.now(), epoch+1, cfg.epoch, idx, len(loader), global_step, total_step, 
+                    lr, loss.item()
+                )
                 print(msg)
-            batch = prefetcher.next()
-
-        if (epoch+1)%10 == 0 or (epoch+1)==cfg.epoch:
-            torch.save(net.state_dict(), cfg.savepath + '/model-%s'%(str(epoch+1)))
-
-from prettytable import PrettyTable
-
-def count_parameters(model):
-    table = PrettyTable(["Modules", "Parameters"])
-    total_params = 0
-    for name, parameter in model.named_parameters():
-        if not parameter.requires_grad: continue
-        param = parameter.numel()
-        table.add_row([name, param])
-        total_params+=param
-    print(table)
-    print(f"Total Trainable Params: {total_params}")
-    return total_params
-
-import GeNet.Net as network
-if __name__=='__main__':
-    train(dataset, network.GeNet)
-    # count_parameters(network.net(0))
-
-    
-    
-
+        if (epoch+1) % 10 == 0:
             
+            torch.save(net.state_dict(), path + '/model-%d'%(epoch+1))
+            print('model saved to %s' % path)
 
-
-        
-
-
+    
+if __name__=='__main__':
+    train(dataset, Net.GeNet, './data/ASSR', 'output/', 
+        rank_num=1, snapshot='output/14-02/model-29')
+            

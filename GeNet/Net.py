@@ -6,7 +6,7 @@ import numpy as np
 
 def weight_init(module):
     for n, m in module.named_children():
-        print('initialize: '+n)
+        # print('initialize: '+n)
         if isinstance(m, nn.Conv2d):
             nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
             if m.bias is not None:
@@ -76,7 +76,7 @@ class ResNet(nn.Module):
         return out2, out3, out4, out5
 
     def initialize(self):
-        self.load_state_dict(torch.load('resnet50-19c8e357.pth'), strict=False)
+        self.load_state_dict(torch.load('res/resnet50-19c8e357.pth'), strict=False)
 
 
 class ATM(nn.Module):
@@ -95,9 +95,9 @@ class ATM(nn.Module):
         B, _, H, W  = query.size()
         qu  = self.q(query).reshape(B, self.num_head, self.head_dim, H*W).permute(0, 1, 3, 2)
         ke  = self.k(key).reshape(B, self.num_head, self.head_dim, H*W)
-        score   = (qu@ke).sum(dim=-1).reshape(B, self.num_head, H, W).permute(0, 2, 3, 1)
-        score   = F.relu(self.bn(score), inplace=True)
-        score   = self.v(score)
+        score   = F.relu(qu@ke).sum(dim=-1).reshape(B, self.num_head, H, W)
+        score   = self.bn(score)
+        score   = torch.sigmoid(self.v(score))
         return value * score
 
     def initialize(self):
@@ -143,26 +143,37 @@ class GeNet(nn.Module):
         self.bkbone = ResNet()
         
         # self.pos_emb= nn.Parameter(torch.zeros((2, img_size, img_size)))
-        self.atm1   = ATM(3, 256, 256)
-        self.atm2   = ATM(3, 256, 256)
+        self.atm1   = ATM(4, 256, 256)
+        self.atm2   = ATM(4, 256, 256)
         self.ham1   = HAM(256, 256, 512, 4)
         self.ham2   = HAM(256, 256, 256, 4)
+        self.conv5  = nn.Conv2d(2048, 256, 3, 1, 1)
+        self.bn5    = nn.BatchNorm2d(256)
+        self.conv4  = nn.Conv2d(1024, 256, 3, 1, 1)
+        self.bn4    = nn.BatchNorm2d(256)
         self.conv1  = nn.Conv2d(256, 1, 3, 1, 1)
         self.initialize()
     
     def forward(self, x):
-        outs = list(self.bkbone(x))
+        outs    = (self.bkbone(x))
         out2, out3, out4, out5 = outs
-        out5a = self.atm1(out5, out5)
-        out4a = self.atm2(out5a, out4)
-        out3a = self.ham1(out4a, out3)
-        out2a = self.ham2(out3a, out2)
-        out   = F.interpolate(self.conv1(out2a), size=x.shape[2:],
+        out5b   = F.relu(self.bn5(self.conv5(out5)), inplace=True)
+        out5a   = self.atm1(out5b, out5b, out5b)
+        out4    = F.relu(self.bn4(self.conv4(out4)), inplace=True)
+        out5a   = F.interpolate(out5a, size=out4.shape[2:], mode='bilinear')
+        out4a   = self.atm2(out5a, out4, out4)
+        out3a   = self.ham1(out4a, out3)
+        out2a   = self.ham2(out3a, out2)
+        out     = F.interpolate(self.conv1(out2a), size=x.shape[2:],
             mode='bilinear')
         return out
     
     def initialize(self):
-        weight_init(self)
+        if self.cfg.snapshot:
+            print('loading snapshot model')
+            self.load_state_dict(torch.load(self.cfg.snapshot))
+        else:
+            weight_init(self)
 
 
 

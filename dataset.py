@@ -1,3 +1,4 @@
+#%%
 from matplotlib.pyplot import axis
 from pathlib import Path
 import torch
@@ -16,11 +17,15 @@ class Normalize(object):
         mask /= 255
         return image, mask
 
-class RandomCrop(object):
+class RandomCrop:
+    def __init__(self, H, W) -> None:
+        self.H  = H
+        self.W  = W
+        
     def __call__(self, image, mask):
         H,W,_   = image.shape
-        randw   = np.random.randint(W/8)
-        randh   = np.random.randint(H/8)
+        randw   = H - self.H
+        randh   = W - self.W
         offseth = 0 if randh == 0 else np.random.randint(randh)
         offsetw = 0 if randw == 0 else np.random.randint(randw)
         p0, p1, p2, p3 = offseth, H+offseth-randh, offsetw, W+offsetw-randw
@@ -29,7 +34,7 @@ class RandomCrop(object):
 class RandomFlip(object):
     def __call__(self, image, mask):
         if np.random.randint(2)==0:
-            return image[:,::-1,:], mask[:, ::-1]
+            return image[:,::-1,:].copy(), mask[:, ::-1].copy()
         else:
             return image, mask
 
@@ -50,22 +55,14 @@ class ToTensor(object):
         mask  = torch.from_numpy(mask)
         return image, mask
 
-
-########################### Config File ###########################
-class Config(object):
-    def __init__(self, **kwargs):
-        self.kwargs = kwargs
-        self.mean   = np.array([[[124.55, 118.90, 102.94]]])
-        self.std    = np.array([[[ 56.77,  55.97,  57.50]]])
-        print('\nParameters...')
-        for k, v in self.kwargs.items():
-            print('%-10s: %s'%(k, v))
-
-    def __getattr__(self, name):
-        if name in self.kwargs:
-            return self.kwargs[name]
-        else:
-            return None
+class Compose:
+    def __init__(self, *ops) -> None:
+        self.ops = ops
+    
+    def __call__(self, image, mask):
+        for op in self.ops:
+            image, mask= op(image, mask)
+        return image, mask
 
 
 class Data(Dataset):
@@ -74,9 +71,9 @@ class Data(Dataset):
         self.cfg    = cfg
         self.rank_num   = cfg.rank if cfg.rank else 6
         self.normalize  = Normalize(mean=cfg.mean, std=cfg.std)
-        self.randomcrop = RandomCrop()
+        self.randomcrop = RandomCrop(288, 288)
         self.randomflip = RandomFlip()
-        self.resize     = Resize(352, 352)
+        self.resize     = Resize(320, 320)
         self.totensor   = ToTensor()
         txtpath = Path(cfg.datapath).joinpath(cfg.mode + '.txt')
 
@@ -90,42 +87,28 @@ class Data(Dataset):
 
     def __getitem__(self, idx: int) :
         name  = self.samples[idx]
-        image = cv2.imread(self.cfg.datapath+'/image/'+name+'.jpg')[:,:,::-1].astype(np.float32)
+        image = cv2.imread(self.cfg.datapath+'/image/'+name+'.jpg').astype(np.float32)
         mask  = cv2.imread(self.cfg.datapath+'/mask/' +name+'.png', 0).astype(np.float32)
         shape = mask.shape
 
+        val                 = mask
+        loc                 = (val != np.unique(val)[-1])#[:, :, None]
+        # loc                 = loc.repeat(3, axis=2)
+        mask[loc]           = 0
+        mask[~loc]          = 255
+
         if self.cfg.mode=='train':
             image, mask = self.normalize(image, mask)
+            image, mask = self.resize(image, mask)
             image, mask = self.randomcrop(image, mask)
             image, mask = self.randomflip(image, mask)
-            return image, mask
+            image, mask = self.totensor(image, mask)
+            return image, mask[None,:], 1
         else:
             image, mask = self.normalize(image, mask)
             image, mask = self.resize(image, mask)
             image, mask = self.totensor(image, mask)
             return image, mask, shape, name
-
-    def collate(self, batch):
-        size = [224, 256, 288, 320, 352][np.random.randint(0, 5)]
-        size = 64
-        image, mask = [list(item) for item in zip(*batch)]
-        valid_len   = []
-        for i in range(len(batch)):
-            # print('Calc 1 img-msk pair')
-            mask[i] = get_instance_masks_by_ranks(mask[i])
-            valid_len.append(len(mask[i]))
-            image[i]= cv2.resize(image[i], dsize=(size, size), interpolation=cv2.INTER_LINEAR)
-            mask[i] = [cv2.resize(m,  dsize=(size, size), interpolation=cv2.INTER_LINEAR)
-                for m in mask[i]]
-
-            mask[i] = trim(mask[i], self.rank_num + 1)
-
-        image = torch.from_numpy(np.stack(image, axis=0)).permute(0,3,1,2).float()
-        mask  = torch.from_numpy(np.stack(mask, axis=0)).float()
-        valid_len   = torch.tensor(valid_len).int()
-        # print(image.size(), mask.size(), valid_len.size())
-
-        return image, mask, valid_len 
 
 def trim(maps, length):
     valid_len   = min(length, len(maps))
@@ -134,27 +117,31 @@ def trim(maps, length):
     return np.concatenate([maps[:valid_len], mask]
     , axis=0)
 
-def get_instance_masks_by_ranks(map):
+def get_instance_masks_by_ranks(map, num=1):
     rank_vals = np.sort(np.unique(map))[::-1]
     masks= np.array([(map == val).astype(np.float32)
-     for val in rank_vals])
+     for val in rank_vals[:min(num, len(rank_vals))]])
     return masks
 
 
-
+#%%
 if __name__=='__main__':
     import matplotlib.pyplot as plt
     plt.ion()
 
-    cfg  = Config(mode='train', datapath='/home/qihuadong2/'
-        +'saliency_rank/F3Net/data/ASSR')
+    from lib.train_util import *
+    cfg  = Config(mode='train', datapath='data/ASSR')
     data = Data(cfg)
     for i in range(1000):
-        image, mask = data[i]
+        image, mask, a = data[i]
+        image       = image.permute(1, 2, 0)
+        mask        = mask.squeeze(0)
         image       = image*cfg.std + cfg.mean
-        print(np.unique(mask))
         plt.subplot(121)
         plt.imshow(np.uint8(image))
         plt.subplot(122)
-        plt.imshow(mask)
-        input()
+        plt.imshow(mask, cmap='gray')
+        plt.show()
+        a=input()
+        if a=='!':
+            break
