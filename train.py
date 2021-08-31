@@ -1,6 +1,7 @@
 import datetime
 import os
 import sys
+from matplotlib.pyplot import switch_backend
 import torch
 
 from torch.utils import data
@@ -11,6 +12,7 @@ import GeNet.Net as Net
 import lib.train_util as t_util
 import dataset
 import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
 
 
 
@@ -24,6 +26,7 @@ def train(dataset, network, datapath, savepath, **kargs):
     path    = os.path.join(cfg.savepath, datetime.datetime.now().strftime('%d-%H'))
     if not os.path.exists(path):
         os.makedirs(path)
+    sw      = SummaryWriter(path)
     
     ### Network
     net     = network(cfg)
@@ -48,8 +51,8 @@ def train(dataset, network, datapath, savepath, **kargs):
     for epoch in range(cfg.epoch):
         idx   = 0
         for img, mask, val_len in iter(loader):
-            img     = img.to('cuda:0', torch.float32, non_blocking=True)
-            mask    = mask.to('cuda:0', torch.float32, non_blocking=True)
+            img     = img.to('cuda:0', torch.float32, non_blocking=True)  # bs, RGB, H, W    
+            mask    = mask.to('cuda:0', torch.float32, non_blocking=True) # bs, rank_num, H, W
             out     = net(img)
             loss    = F.binary_cross_entropy_with_logits(out, mask)
 
@@ -59,25 +62,24 @@ def train(dataset, network, datapath, savepath, **kargs):
             lr, momentum    = lr_scheduler.get_lr(idx)
             optimizer.momemtum  = momentum
             optimizer.param_groups[0]['lr']     = 0.1*lr
-
             optimizer.param_groups[1]['lr']     = lr
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
 
+            sw.add_scalar('loss', loss.item(), global_step)
             if idx%10==0:
                 msg     = '%s | step: %d/%d, %d/%d, %d/%d | lr=%.5f | loss=%.6f' % (
                     datetime.datetime.now(), epoch+1, cfg.epoch, idx, len(loader), global_step, total_step, 
                     lr, loss.item()
                 )
                 print(msg)
-        if (epoch+1) % 10 == 0:
-            
+        if (epoch+1) % 10 == 0:           
             torch.save(net.state_dict(), path + '/model-%d'%(epoch+1))
             print('model saved to %s' % path)
 
     
 if __name__=='__main__':
     train(dataset, Net.GeNet, './data/ASSR', 'output/', 
-        rank_num=1, snapshot='output/14-02/model-29')
+        rank_num=3)
             

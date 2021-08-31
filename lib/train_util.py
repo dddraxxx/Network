@@ -32,8 +32,8 @@ class LR_Scheduler:
 class Config:
     def __init__(self, **kargs) -> None:
         self.kargs  = kargs
-        self.mean   = np.array([[[124.55, 118.90, 102.94]]])
-        self.std    = np.array([[[ 56.77,  55.97,  57.50]]])
+        self.mean = np.array([[[0.485*256, 0.456*256, 0.406*256]]])
+        self.std = np.array([[[0.229*256, 0.224*256, 0.225*256]]])
         print('\nParameters...')
         for k,v in kargs.items():
             print('%-10s: %s'%(k,v))
