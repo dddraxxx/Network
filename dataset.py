@@ -104,7 +104,7 @@ class Data(Dataset):
             return image, mask, val_len
         else:
             image, mask = self.normalize(image, mask)
-            image, mask = self.resize(image, mask[None])
+            image, _ = self.resize(image, np.ones(mask[None].shape))
             image, mask = self.totensor(image, mask)
             return image, mask, shape, name
 
